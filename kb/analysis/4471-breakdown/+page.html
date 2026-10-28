@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>#4471 breakdown · two distinct problems</title>
+</head>
+<body>
+    <h1>#4471 breakdown · two distinct problems</h1>
+
+    <p>Ticket #4471 merged 412 reports about dates landing on the wrong day. The desk marked it as one issue ("parser reads mm/dd in eu locales"), but analysis shows <strong>two distinct problems</strong> that require separate fixes.</p>
+
+    <div class="callout">
+        <strong>Two problems found.</strong> 379 reports trace to the parser, 33 to the booking-v3 form hint.
+    </div>
+
+    <h2>The two problems</h2>
+
+    <h3>1. Parser problem (379 reports)</h3>
+
+    <p><strong>What happens:</strong> The shared date parser reads all dates month-first (MM/DD), regardless of tenant locale. Day-first tenants write dates as DD/MM, but the parser flips them.</p>
+
+    <p><strong>Impact:</strong></p>
+    <ul>
+        <li>379 reports (92% of #4471)</li>
+        <li>11 tenants affected</li>
+        <li>Channels: app (204), email (150), form (25)</li>
+        <li>Both booking-v2 and booking-v3</li>
+        <li>First seen 2026-04-01, last seen 2026-10-04</li>
+    </ul>
+
+    <p><strong>Example:</strong> Tenant <code>harbour.dental</code> (en-GB locale) reports "Our 7 April reminder went out on 4 July" — the parser read <code>07/04</code> as July 4th instead of April 7th.</p>
+
+    <p><strong>Root cause:</strong> Parser assumes MM/DD/YYYY format for all input, ignoring tenant locale.</p>
+
+    <p><strong>Fix:</strong> Parser must respect tenant locale and parse dates according to locale date format (day-first vs month-first).</p>
+
+    <p><strong>Tracked:</strong> <a href="https://github.com/smigielp/megadevs-tickets/issues/1">smigielp/megadevs-tickets#1</a></p>
+
+    <h3>2. Form hint problem (33 reports)</h3>
+
+    <p><strong>What happens:</strong> The booking-v3 form shows "MM/DD/YYYY" as the date field hint for all tenants. Day-first locale users follow this hint and enter dates month-first, but the form reads the input according to the tenant's locale (day-first), causing a flip.</p>
+
+    <p><strong>Impact:</strong></p>
+    <ul>
+        <li>33 reports (8% of #4471)</li>
+        <li>3 tenants affected: alder.physio, copper.studio, pale.harbour</li>
+        <li>Channel: form only</li>
+        <li>booking-v3 only (booking-v2 shows correct DD/MM/YYYY hint)</li>
+        <li>First seen 2026-04-17, last seen 2026-09-22</li>
+    </ul>
+
+    <p><strong>Example:</strong> User at en-GB tenant sees hint "MM/DD/YYYY", enters <code>04/07/2026</code> (meaning April 7), but the form interprets it as DD/MM format (7th of April), which then gets flipped by the parser.</p>
+
+    <p><strong>Root cause:</strong> booking-v3 form displays hardcoded "MM/DD/YYYY" hint regardless of tenant locale.</p>
+
+    <p><strong>Fix:</strong> booking-v3 form hint must match tenant locale:</p>
+    <ul>
+        <li>Day-first locales: show "DD/MM/YYYY"</li>
+        <li>Month-first locales: show "MM/DD/YYYY"</li>
+    </ul>
+
+    <p><strong>Tracked:</strong> <a href="https://github.com/smigielp/megadevs-tickets/issues/2">smigielp/megadevs-tickets#2</a></p>
+
+    <h2>Why this matters</h2>
+
+    <p>Merging these as one ticket (#4471) makes sense for user-facing communication — both cause the same symptom. But they need <strong>separate fixes in different parts of the codebase</strong>:</p>
+
+    <ol>
+        <li>Parser fix: shared date parsing logic (affects all channels)</li>
+        <li>Form hint fix: booking-v3 form component only</li>
+    </ol>
+
+    <p>Fixing only the parser would still leave 33 reports unresolved. Fixing both eliminates all 412 reports.</p>
+
+    <h2>Analysis method</h2>
+
+    <p>The support desk's own cause determination logic (<code>src/lib/kb/causes.ts</code>) was used to classify each report. Reports were grouped by:</p>
+    <ul>
+        <li>Tenant locale (day-first vs month-first)</li>
+        <li>Channel (app, email, form)</li>
+        <li>Form version (booking-v2 vs booking-v3)</li>
+        <li>Date hint shown to user</li>
+    </ul>
+
+    <p>This revealed that the 58 form-channel reports split into two groups:</p>
+    <ul>
+        <li>25 reports from booking-v2 or day-first+booking-v3 → parser problem</li>
+        <li>33 reports from day-first+booking-v3 with MM/DD hint → hint problem</li>
+    </ul>
+
+    <p class="stamp">desk ref <b>DR-9C1F-F44M</b></p>
+</body>
+</html>
